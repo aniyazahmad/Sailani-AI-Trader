@@ -19,59 +19,77 @@ def send_telegram_msg(message):
         requests.get(url)
     except: pass
 
-st.title("🤖 Sailani AI Ultimate Pro")
+st.set_page_config(page_title="Sailani AI Ultimate Pro", layout="centered")
+st.title("🎯 Sailani AI Ultimate: 50 Coin Scanner")
+
+# लेवरेज और अमाउंट सेटिंग्स
+col1, col2 = st.columns(2)
+with col1:
+    leverage = st.number_input("Leverage (x)", 1, 50, 10)
+with col2:
+    amount = st.number_input("Trade Amount ($)", 10, value=50)
 
 # 50 हाई वॉल्यूम कॉइन्स
 coin_list = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "BNB/USDT", "DOGE/USDT", "ADA/USDT", "MATIC/USDT", "DOT/USDT", "TRX/USDT", "LTC/USDT", "SHIB/USDT", "AVAX/USDT", "LINK/USDT", "UNI/USDT", "ATOM/USDT", "ETC/USDT", "XLM/USDT", "BCH/USDT", "FIL/USDT", "LDO/USDT", "APT/USDT", "NEAR/USDT", "ARB/USDT", "OP/USDT", "GRT/USDT", "STX/USDT", "ICP/USDT", "RNDR/USDT", "INJ/USDT", "TIA/USDT", "SUI/USDT", "SEI/USDT", "ORDI/USDT", "PEPE/USDT", "FET/USDT", "AGIX/USDT", "GALA/USDT", "IMX/USDT", "KAS/USDT", "THETA/USDT", "VET/USDT", "EGLD/USDT", "MKR/USDT", "AAVE/USDT", "FLOW/USDT", "RUNE/USDT", "ALGO/USDT", "HBAR/USDT", "SAND/USDT"]
 
-symbol = st.selectbox("🎯 ट्रेड के लिए कॉइन चुनें", coin_list)
-
-# सेशन स्टेट - पुराने ट्रेड्स को ट्रैक करने के लिए
+# सेशन स्टेट मैनेजमेंट
 if 'active_trade' not in st.session_state:
     st.session_state.active_trade = None
 if 'today_profit' not in st.session_state:
     st.session_state.today_profit = 0.0
 
-st.sidebar.write(f"💰 आज का प्रॉफिट: ${st.session_state.today_profit}")
+st.sidebar.markdown(f"### 💰 आज का प्रॉफिट: `${st.session_state.today_profit}`")
 
-# $25 टारगेट चेक
 if st.session_state.today_profit >= PROFIT_GOAL:
-    st.success("🎯 डेली टारगेट पूरा! अब कल मिलेंगे।")
-    send_telegram_msg("🎉 $25 का डेली टारगेट पूरा हुआ! आज की ट्रेडिंग बंद।")
+    st.success("🎉 $25 का लक्ष्य पूरा! आज की ट्रेडिंग बंद।")
     auto_mode = False
 else:
-    auto_mode = st.toggle("🚀 Auto-Scan Mode चालू करें")
+    auto_mode = st.toggle("🚀 50 Coin Auto-Scan चालू करें")
 
-# टारगेट/SL चेक करने वाला फंक्शन
-def check_trade_result():
-    if st.session_state.active_trade:
-        trade = st.session_state.active_trade
-        ticker = exchange.fetch_ticker(trade['symbol'])
-        current_price = ticker['last']
-        
-        if current_price >= trade['tp']:
-            send_telegram_msg(f"✅ TARGET HIT! 🎯\nCoin: {trade['symbol']}\nResult: Profit!")
-            st.session_state.today_profit += 5.0 # प्रॉफिट जोड़ें
-            st.session_state.active_trade = None
-            return True
-        elif current_price <= trade['sl']:
-            send_telegram_msg(f"❌ STOP LOSS HIT! 📉\nCoin: {trade['symbol']}\nResult: Loss")
-            st.session_state.active_trade = None
-            return True
-    return False
-
-# मुख्य ऑटो-स्कैन लूप
-if auto_mode:
-    placeholder = st.empty()
-    while auto_mode:
-        if st.session_state.active_trade:
-            placeholder.warning(f"⏳ {st.session_state.active_trade['symbol']} का रिजल्ट आने तक नया सिग्नल बंद है...")
-            check_trade_result()
-            time.sleep(30)
-            continue
+def scan_all_coins():
+    for coin in coin_list:
+        try:
+            bars = exchange.fetch_ohlcv(coin, timeframe='5m', limit=50)
+            df = pd.DataFrame(bars, columns=['t', 'o', 'h', 'l', 'c', 'v'])
+            last_price = df['close'].iloc[-1]
+            prev_high = df['high'].iloc[-2]
             
-        # यहाँ नया सिग्नल ढूंढने का लॉजिक चलेगा (15m + 5m SMC)
-        # सिग्नल मिलने पर st.session_state.active_trade सेट होगा...
+            # SMC Breakout Logic
+            if last_price > prev_high:
+                sl = df['low'].rolling(window=5).min().iloc[-1]
+                tp = last_price + (last_price - sl) * 3
+                return {'symbol': coin, 'entry': last_price, 'sl': sl, 'tp': tp}
+        except: continue
+    return None
+
+if auto_mode:
+    status_box = st.empty()
+    while auto_mode:
+        # 1. अगर कोई ट्रेड चल रहा है, तो उसका रिजल्ट चेक करें
+        if st.session_state.active_trade:
+            trade = st.session_state.active_trade
+            ticker = exchange.fetch_ticker(trade['symbol'])
+            current = ticker['last']
+            status_box.warning(f"⏳ वेटिंग: {trade['symbol']} | Price: {current}\nTarget: {trade['tp']} | SL: {trade['sl']}")
+            
+            if current >= trade['tp']:
+                send_telegram_msg(f"✅ TARGET HIT! 🎯\nCoin: {trade['symbol']}\nProfit: Done")
+                st.session_state.today_profit += 5.0 # प्रॉफिट अपडेट
+                st.session_state.active_trade = None
+                st.rerun()
+            elif current <= trade['sl']:
+                send_telegram_msg(f"❌ STOP LOSS HIT! 📉\nCoin: {trade['symbol']}")
+                st.session_state.active_trade = None
+                st.rerun()
         
-        placeholder.info(f"[{time.strftime('%H:%M:%S')}] नया मौका ढूंढ रहा हूँ...")
-        time.sleep(30)
+        # 2. अगर कोई ट्रेड नहीं है, तो पूरी लिस्ट को स्कैन करें
+        else:
+            status_box.info("🔍 सभी 50 कॉइन्स में बेस्ट सेटअप ढूंढ रहा हूँ...")
+            signal = scan_all_coins()
+            if signal:
+                st.session_state.active_trade = signal
+                msg = f"🚀 NEW SIGNAL FOUND!\nCoin: {signal['symbol']}\nEntry: {signal['entry']}\nSL: {signal['sl']}\nTarget: {signal['tp']}\nLeverage: {leverage}x"
+                send_telegram_msg(msg)
+                st.rerun()
+        
+        time.sleep(30) # हर 30 सेकंड में रिफ्रेश
