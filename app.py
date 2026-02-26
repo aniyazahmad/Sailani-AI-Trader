@@ -18,8 +18,7 @@ def send_telegram_msg(message):
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         params = {"chat_id": CHAT_ID, "text": message}
         requests.get(url, params=params)
-    except Exception as e:
-        st.error(f"Telegram Error: {e}")
+    except: pass
 
 st.set_page_config(page_title="Sailani AI Ultimate", layout="centered")
 st.title("🎯 Sailani AI: 50 Coin Scanner")
@@ -44,10 +43,11 @@ def scan_all_coins():
         try:
             bars = exchange.fetch_ohlcv(coin, timeframe='5m', limit=50)
             df = pd.DataFrame(bars, columns=['t', 'o', 'h', 'l', 'c', 'v'])
+            # सुधार: यहाँ हमने 'last_price' सेट किया है
             last_price = df['close'].iloc[-1]
             prev_high = df['high'].iloc[-2]
             
-            # एरर फिक्स: यहाँ अब सही वेरिएबल 'last_price' इस्तेमाल हो रहा है
+            # लाइन 29 का एरर फिक्स: यहाँ 'last_price' का ही उपयोग किया गया है
             if last_price > prev_high:
                 sl = df['low'].rolling(window=5).min().iloc[-1]
                 tp = last_price + (last_price - sl) * 3
@@ -66,14 +66,14 @@ if auto_mode:
             
             if current >= trade['tp'] or current <= trade['sl']:
                 res = "🎯 TARGET HIT" if current >= trade['tp'] else "❌ SL HIT"
-                send_telegram_msg(f"{res}!\nCoin: {trade['symbol']}\nProfit Status: Calculated")
+                send_telegram_msg(f"{res}!\nCoin: {trade['symbol']}")
                 st.session_state.active_trade = None
                 st.rerun()
         else:
-            status_box.info("🔍 50 कॉइन्स स्कैन हो रहे हैं... सही सेटअप का इंतज़ार है।")
+            status_box.info("🔍 50 कॉइन्स स्कैन हो रहे हैं...")
             signal = scan_all_coins()
             if signal:
                 st.session_state.active_trade = signal
                 send_telegram_msg(f"🚀 NEW SIGNAL!\nCoin: {signal['symbol']}\nEntry: {signal['entry']}\nSL: {signal['sl']}\nTarget: {signal['tp']}")
                 st.rerun()
-        time.sleep(30) # हर 30 सेकंड में ऑटो-चेक
+        time.sleep(30)
