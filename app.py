@@ -1,71 +1,90 @@
 import streamlit as st
 import ccxt
 import pandas as pd
-import os
+import requests
+import time
 
-# Delta Exchange API Details
+# 1. कॉन्फ़िगरेशन (Delta & Telegram)
 API_KEY = 'DbVJYwN6Xz9rw9tVWoQAoytPaIlguq'
 SECRET_KEY = '67ZCZD86Hy2kq2U04CFEwb6SqvSw9UZG9hJgqU413We2JasxsJ0L3KsVWJur'
+TELEGRAM_TOKEN = '8555372861:AAET5vyB0myBGqJc0P3jvqN0xcDoVTX2cO8'
+CHAT_ID = '7863674359'
 
 exchange = ccxt.delta({'apiKey': API_KEY, 'secret': SECRET_KEY})
 
-st.title("🛡️ Sailani Smart-Learn AI (SMC)")
+# मुनाफे का लक्ष्य
+PROFIT_GOAL = 25.0 
 
-# साइडबार सेटिंग्स
-st.sidebar.header("Trading Settings")
-leverage = st.sidebar.slider("Leverage", 1, 50, 10)
-amount = st.sidebar.number_input("Trade Amount ($)", 10, value=50)
-symbol = st.sidebar.selectbox("Market", ["BTC/USDT", "ETH/USDT"])
+def send_telegram_msg(message):
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={message}"
+        requests.get(url)
+    except:
+        pass
 
-# फंक्शन: डेटा और SMC लॉजिक
-def scan_market():
-    bars = exchange.fetch_ohlcv(symbol, timeframe='5m', limit=100)
-    df = pd.DataFrame(bars, columns=['time', 'open', 'high', 'low', 'close', 'vol'])
+st.set_page_config(page_title="Sailani AI Pro", layout="centered")
+st.title("🤖 Sailani AI: Smart Money Trader")
+
+# सेशन स्टेट में आज का प्रॉफिट ट्रैक करना
+if 'today_profit' not in st.session_state:
+    st.session_state.today_profit = 0.0
+
+# साइडबार में जानकारी
+st.sidebar.header("Daily Tracking")
+st.sidebar.write(f"💰 आज का मुनाफा: ${st.session_state.today_profit}")
+st.sidebar.write(f"🎯 लक्ष्य: ${PROFIT_GOAL}")
+
+if st.session_state.today_profit >= PROFIT_GOAL:
+    st.balloons()
+    st.success("🎉 मुबारक हो! आज का $25 का लक्ष्य पूरा हुआ। ट्रेडिंग अब कल करेंगे।")
+    auto_mode = False
+else:
+    auto_mode = st.toggle("🚀 Auto-Scan Mode चालू करें")
+
+# सेटिंग्स
+symbol = st.selectbox("🎯 कॉइन चुनें", ["BTC/USDT", "ETH/USDT", "SOL/USDT"])
+leverage = st.slider("Leverage (x)", 1, 50, 10)
+amount = st.number_input("Amount ($)", 10, value=50)
+
+def analyze_market():
+    # Multi-Timeframe Analysis
+    bars_15m = exchange.fetch_ohlcv(symbol, timeframe='15m', limit=50)
+    df_15m = pd.DataFrame(bars_15m, columns=['t', 'o', 'h', 'l', 'c', 'v'])
     
-    last_price = df['close'].iloc[-1] # एरर यहाँ ठीक कर दिया गया है
-    prev_high = df['high'].iloc[-2]
-    sl_price = df['low'].rolling(window=5).min().iloc[-1]
-    tp_price = last_price + (last_price - sl_price) * 3
+    bars_5m = exchange.fetch_ohlcv(symbol, timeframe='5m', limit=50)
+    df_5m = pd.DataFrame(bars_5m, columns=['t', 'o', 'h', 'l', 'c', 'v'])
     
-    return last_price, prev_high, sl_price, tp_price, df
-
-# सेल्फ-लर्निंग डेटा स्टोर करना (Point 7)
-def save_trade_to_memory(data):
-    if not os.path.isfile('trade_history.csv'):
-        pd.DataFrame([data]).to_csv('trade_history.csv', index=False)
-    else:
-        pd.DataFrame([data]).to_csv('trade_history.csv', mode='a', header=False, index=False)
-
-if st.button('Scan Market for 90% Accuracy'):
-    last_price, prev_high, sl_price, tp_price, df = scan_market()
+    trend_up = df_15m['c'].iloc[-1] > df_15m['c'].iloc[-15] # 15 मिनट का ट्रेंड
+    choch = df_5m['c'].iloc[-1] > df_5m['h'].iloc[-2] # 5 मिनट का ब्रेकआउट
     
-    if last_price > prev_high:
-        st.success(f"🔥 BUY SIGNAL DETECTED!")
-        st.write(f"**Entry:** {last_price} | **SL:** {sl_price} | **Target:** {tp_price}")
+    if trend_up and choch:
+        entry = df_5m['c'].iloc[-1]
+        sl = df_5m['l'].rolling(window=5).min().iloc[-1]
+        tp = entry + (entry - sl) * 3
+        return True, entry, sl, tp
+    return False, 0, 0, 0
+
+# ऑटो-स्कैनिंग लॉजिक
+if auto_mode:
+    st.warning(f"⚠️ ऑटो-स्कैन चालू है। ${PROFIT_GOAL} तक पहुँचते ही यह रुक जाएगा।")
+    placeholder = st.empty()
+    
+    while auto_mode:
+        # अगर बीच में लक्ष्य पूरा हो जाए
+        if st.session_state.today_profit >= PROFIT_GOAL:
+            st.rerun()
+            
+        is_signal, entry, sl, tp = analyze_market()
         
-        if st.button(f"✅ CONFIRM {leverage}x TRADE"):
-            try:
-                # लेवरेज सेट करना
-                exchange.private_post_settings_leverage({'symbol': symbol.replace('/', ''), 'leverage': str(leverage)})
-                # आर्डर प्लेस करना
-                order = exchange.create_order(symbol, 'market', 'buy', amount)
-                
-                # लर्निंग डेटा सेव करना
-                save_trade_to_memory({'symbol': symbol, 'price': last_price, 'leverage': leverage, 'status': 'Executed'})
-                
-                st.balloons()
-                st.write("🚀 Trade Executed & Saved to AI Memory!")
-            except Exception as e:
-                st.error(f"Error: {e}")
-    else:
-        st.info("Scanning... Market structure not ready yet.")
-    st.line_chart(df['close'])
-
-# AI लर्निंग डिस्प्ले
-if st.sidebar.checkbox("Show AI Learning Data"):
-    if os.path.isfile('trade_history.csv'):
-        history = pd.read_csv('trade_history.csv')
-        st.sidebar.write(f"Total AI-Learned Trades: {len(history)}")
-        st.sidebar.dataframe(history.tail(5))
-    else:
-        st.sidebar.write("AI is currently learning...")
+        if is_signal:
+            msg = f"✅ HIGH ACCURACY SIGNAL!\nCoin: {symbol}\nPrice: {entry}\nSL: {sl}\nTarget: {tp}"
+            placeholder.success(msg)
+            send_telegram_msg(msg)
+            # 5 मिनट का ब्रेक (Anti-Block)
+            time.sleep(300) 
+        else:
+            placeholder.info(f"[{time.strftime('%H:%M:%S')}] मार्केट स्कैन हो रहा है... सही मौके का इंतज़ार है।")
+            time.sleep(30) # हर 30 सेकंड में चेक
+else:
+    if st.session_state.today_profit < PROFIT_GOAL:
+        st.info("ऑटो-स्कैन बंद है।")
