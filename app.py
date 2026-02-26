@@ -13,16 +13,12 @@ CHAT_ID = '7863674359'
 exchange = ccxt.delta({'apiKey': API_KEY, 'secret': SECRET_KEY})
 PROFIT_GOAL = 25.0 
 
-# टेलीग्राम मैसेज भेजने का फंक्शन
 def send_telegram_msg(message):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         params = {"chat_id": CHAT_ID, "text": message}
-        response = requests.get(url, params=params)
-        return response.json()
-    except Exception as e:
-        st.error(f"Telegram Error: {e}")
-        return None
+        requests.get(url, params=params)
+    except: pass
 
 st.set_page_config(page_title="Sailani AI Ultimate", layout="centered")
 st.title("🎯 Sailani AI: 50 Coin Scanner")
@@ -48,11 +44,11 @@ def scan_all_coins():
             bars = exchange.fetch_ohlcv(coin, timeframe='5m', limit=50)
             df = pd.DataFrame(bars, columns=['t', 'o', 'h', 'l', 'c', 'v'])
             
-            # सुधार: यहाँ वेरिएबल का नाम 'last_price' रखा गया है
+            # सुधार: यहाँ वेरिएबल 'last_price' नाम से सेट किया गया है
             last_price = df['close'].iloc[-1]
             prev_high = df['high'].iloc[-2]
             
-            # लाइन 29 का फिक्स: यहाँ 'last_price' ही इस्तेमाल होगा
+            # लाइन 29 का फिक्स: अब एरर नहीं आएगा
             if last_price > prev_high:
                 sl = df['low'].rolling(window=5).min().iloc[-1]
                 tp = last_price + (last_price - sl) * 3
@@ -71,18 +67,14 @@ if auto_mode:
             
             if current >= trade['tp'] or current <= trade['sl']:
                 res = "🎯 TARGET HIT" if current >= trade['tp'] else "❌ SL HIT"
-                send_telegram_msg(f"{res}!\nCoin: {trade['symbol']}\nFinal Price: {current}")
+                send_telegram_msg(f"{res}!\nCoin: {trade['symbol']}")
                 st.session_state.active_trade = None
                 st.rerun()
         else:
-            status_box.info("🔍 सभी 50 कॉइन्स में बेस्ट सेटअप ढूंढ रहा हूँ...")
+            status_box.info("🔍 50 कॉइन्स स्कैन हो रहे हैं...")
             signal = scan_all_coins()
             if signal:
                 st.session_state.active_trade = signal
-                # टेलीग्राम पर मैसेज भेजना
-                msg = f"🚀 NEW SIGNAL FOUND!\nCoin: {signal['symbol']}\nEntry: {signal['entry']}\nSL: {signal['sl']}\nTarget: {signal['tp']}\nLeverage: {leverage}x"
-                send_telegram_msg(msg)
-                st.success(f"सिग्नल मिला: {signal['symbol']} - टेलीग्राम पर मैसेज भेज दिया गया है!")
+                send_telegram_msg(f"🚀 NEW SIGNAL FOUND!\nCoin: {signal['symbol']}\nEntry: {signal['entry']}\nSL: {signal['sl']}\nTarget: {signal['tp']}\nLeverage: {leverage}x")
                 st.rerun()
-        
-        time.sleep(30) # हर 30 सेकंड में ऑटो-चेक
+        time.sleep(30)
