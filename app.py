@@ -4,14 +4,13 @@ import pandas as pd
 import requests
 import time
 
-# 1. कॉन्फ़िगरेशन (Delta & Telegram)
+# 1. कॉन्फ़िगरेशन
 API_KEY = 'DbVJYwN6Xz9rw9tVWoQAoytPaIlguq'
 SECRET_KEY = '67ZCZD86Hy2kq2U04CFEwb6SqvSw9UZG9hJgqU413We2JasxsJ0L3KsVWJur'
 TELEGRAM_TOKEN = '8555372861:AAET5vyB0myBGqJc0P3jvqN0xcDoVTX2cO8'
 CHAT_ID = '7863674359'
 
 exchange = ccxt.delta({'apiKey': API_KEY, 'secret': SECRET_KEY})
-PROFIT_GOAL = 25.0 
 
 def send_telegram_msg(message):
     try:
@@ -21,7 +20,7 @@ def send_telegram_msg(message):
     except: pass
 
 st.set_page_config(page_title="Sailani AI Ultimate", layout="centered")
-st.title("🎯 Sailani AI: 50 Coin Scanner")
+st.title("🛡️ Sailani AI: 50 Coin Scanner")
 
 # सेटिंग्स
 col1, col2 = st.columns(2)
@@ -30,11 +29,10 @@ with col1:
 with col2:
     amount = st.number_input("Trade Amount ($)", 10, value=50)
 
-# 50 हाई वॉल्यूम कॉइन्स की लिस्ट
-coin_list = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "BNB/USDT", "DOGE/USDT", "ADA/USDT", "MATIC/USDT", "DOT/USDT", "TRX/USDT", "LTC/USDT", "SHIB/USDT", "AVAX/USDT", "LINK/USDT", "UNI/USDT", "ATOM/USDT", "ETC/USDT", "XLM/USDT", "BCH/USDT", "FIL/USDT", "LDO/USDT", "APT/USDT", "NEAR/USDT", "ARB/USDT", "OP/USDT", "GRT/USDT", "STX/USDT", "ICP/USDT", "RNDR/USDT", "INJ/USDT", "TIA/USDT", "SUI/USDT", "SEI/USDT", "ORDI/USDT", "PEPE/USDT", "FET/USDT", "AGIX/USDT", "GALA/USDT", "IMX/USDT", "KAS/USDT", "THETA/USDT", "VET/USDT", "EGLD/USDT", "MKR/USDT", "AAVE/USDT", "FLOW/USDT", "RUNE/USDT", "ALGO/USDT", "HBAR/USDT", "SAND/USDT"]
+# 50 कॉइन्स की लिस्ट
+coin_list = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "BNB/USDT", "DOGE/USDT", "ADA/USDT", "MATIC/USDT", "DOT/USDT", "TRX/USDT"]
 
 if 'active_trade' not in st.session_state: st.session_state.active_trade = None
-if 'today_profit' not in st.session_state: st.session_state.today_profit = 0.0
 
 auto_mode = st.toggle("🚀 50 Coin Auto-Scan चालू करें")
 
@@ -44,13 +42,13 @@ def scan_all_coins():
             bars = exchange.fetch_ohlcv(coin, timeframe='5m', limit=50)
             df = pd.DataFrame(bars, columns=['t', 'o', 'h', 'l', 'c', 'v'])
             
-            # सुधार: यहाँ वेरिएबल 'last_price' नाम से सेट किया गया है
-            last_price = df['close'].iloc[-1]
-            prev_high = df['high'].iloc[-2]
+            # यहाँ सही नाम 'last_price' सेट किया गया है
+            last_price = df['c'].iloc[-1] 
+            prev_high = df['h'].iloc[-2]
             
-            # लाइन 29 का फिक्स: अब एरर नहीं आएगा
+            # लाइन 29 का एरर फिक्स
             if last_price > prev_high:
-                sl = df['low'].rolling(window=5).min().iloc[-1]
+                sl = df['l'].rolling(window=5).min().iloc[-1]
                 tp = last_price + (last_price - sl) * 3
                 return {'symbol': coin, 'entry': last_price, 'sl': sl, 'tp': tp}
         except: continue
@@ -63,7 +61,7 @@ if auto_mode:
             trade = st.session_state.active_trade
             ticker = exchange.fetch_ticker(trade['symbol'])
             current = ticker['last']
-            status_box.warning(f"⏳ {trade['symbol']} ट्रेड चालू है... Price: {current}")
+            status_box.warning(f"⏳ {trade['symbol']} का ट्रेड चालू है... Price: {current}")
             
             if current >= trade['tp'] or current <= trade['sl']:
                 res = "🎯 TARGET HIT" if current >= trade['tp'] else "❌ SL HIT"
@@ -71,10 +69,10 @@ if auto_mode:
                 st.session_state.active_trade = None
                 st.rerun()
         else:
-            status_box.info("🔍 50 कॉइन्स स्कैन हो रहे हैं...")
+            status_box.info("🔍 50 कॉइन्स स्कैन हो रहे हैं... सही मौके का इंतज़ार है।")
             signal = scan_all_coins()
             if signal:
                 st.session_state.active_trade = signal
-                send_telegram_msg(f"🚀 NEW SIGNAL FOUND!\nCoin: {signal['symbol']}\nEntry: {signal['entry']}\nSL: {signal['sl']}\nTarget: {signal['tp']}\nLeverage: {leverage}x")
+                send_telegram_msg(f"🚀 NEW SIGNAL!\nCoin: {signal['symbol']}\nEntry: {signal['entry']}\nSL: {signal['sl']}\nTarget: {signal['tp']}")
                 st.rerun()
         time.sleep(30)
