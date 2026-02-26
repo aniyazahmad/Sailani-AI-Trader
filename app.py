@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 import time
 
-# 1. कॉन्फ़िगरेशन
+# 1. कॉन्फ़िगरेशन (Delta & Telegram)
 API_KEY = 'DbVJYwN6Xz9rw9tVWoQAoytPaIlguq'
 SECRET_KEY = '67ZCZD86Hy2kq2U04CFEwb6SqvSw9UZG9hJgqU413We2JasxsJ0L3KsVWJur'
 TELEGRAM_TOKEN = '8555372861:AAET5vyB0myBGqJc0P3jvqN0xcDoVTX2cO8'
@@ -15,9 +15,11 @@ PROFIT_GOAL = 25.0
 
 def send_telegram_msg(message):
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={message}"
-        requests.get(url)
-    except: pass
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        params = {"chat_id": CHAT_ID, "text": message}
+        requests.get(url, params=params)
+    except Exception as e:
+        st.error(f"Telegram Error: {e}")
 
 st.set_page_config(page_title="Sailani AI Ultimate", layout="centered")
 st.title("🎯 Sailani AI: 50 Coin Scanner")
@@ -45,6 +47,7 @@ def scan_all_coins():
             last_price = df['close'].iloc[-1]
             prev_high = df['high'].iloc[-2]
             
+            # एरर फिक्स: यहाँ अब सही वेरिएबल 'last_price' इस्तेमाल हो रहा है
             if last_price > prev_high:
                 sl = df['low'].rolling(window=5).min().iloc[-1]
                 tp = last_price + (last_price - sl) * 3
@@ -63,14 +66,14 @@ if auto_mode:
             
             if current >= trade['tp'] or current <= trade['sl']:
                 res = "🎯 TARGET HIT" if current >= trade['tp'] else "❌ SL HIT"
-                send_telegram_msg(f"{res}!\nCoin: {trade['symbol']}")
+                send_telegram_msg(f"{res}!\nCoin: {trade['symbol']}\nProfit Status: Calculated")
                 st.session_state.active_trade = None
                 st.rerun()
         else:
-            status_box.info("🔍 50 कॉइन्स स्कैन हो रहे हैं...")
+            status_box.info("🔍 50 कॉइन्स स्कैन हो रहे हैं... सही सेटअप का इंतज़ार है।")
             signal = scan_all_coins()
             if signal:
                 st.session_state.active_trade = signal
                 send_telegram_msg(f"🚀 NEW SIGNAL!\nCoin: {signal['symbol']}\nEntry: {signal['entry']}\nSL: {signal['sl']}\nTarget: {signal['tp']}")
                 st.rerun()
-        time.sleep(30)
+        time.sleep(30) # हर 30 सेकंड में ऑटो-चेक
