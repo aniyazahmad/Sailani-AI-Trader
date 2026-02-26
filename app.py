@@ -19,32 +19,23 @@ def send_telegram_msg(message):
         requests.get(url)
     except: pass
 
-st.set_page_config(page_title="Sailani AI Ultimate Pro", layout="centered")
-st.title("🎯 Sailani AI Ultimate: 50 Coin Scanner")
+st.set_page_config(page_title="Sailani AI Ultimate", layout="centered")
+st.title("🎯 Sailani AI: 50 Coin Scanner")
 
-# लेवरेज और अमाउंट सेटिंग्स
+# सेटिंग्स
 col1, col2 = st.columns(2)
 with col1:
     leverage = st.number_input("Leverage (x)", 1, 50, 10)
 with col2:
     amount = st.number_input("Trade Amount ($)", 10, value=50)
 
-# 50 हाई वॉल्यूम कॉइन्स
+# 50 हाई वॉल्यूम कॉइन्स की लिस्ट
 coin_list = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "BNB/USDT", "DOGE/USDT", "ADA/USDT", "MATIC/USDT", "DOT/USDT", "TRX/USDT", "LTC/USDT", "SHIB/USDT", "AVAX/USDT", "LINK/USDT", "UNI/USDT", "ATOM/USDT", "ETC/USDT", "XLM/USDT", "BCH/USDT", "FIL/USDT", "LDO/USDT", "APT/USDT", "NEAR/USDT", "ARB/USDT", "OP/USDT", "GRT/USDT", "STX/USDT", "ICP/USDT", "RNDR/USDT", "INJ/USDT", "TIA/USDT", "SUI/USDT", "SEI/USDT", "ORDI/USDT", "PEPE/USDT", "FET/USDT", "AGIX/USDT", "GALA/USDT", "IMX/USDT", "KAS/USDT", "THETA/USDT", "VET/USDT", "EGLD/USDT", "MKR/USDT", "AAVE/USDT", "FLOW/USDT", "RUNE/USDT", "ALGO/USDT", "HBAR/USDT", "SAND/USDT"]
 
-# सेशन स्टेट मैनेजमेंट
-if 'active_trade' not in st.session_state:
-    st.session_state.active_trade = None
-if 'today_profit' not in st.session_state:
-    st.session_state.today_profit = 0.0
+if 'active_trade' not in st.session_state: st.session_state.active_trade = None
+if 'today_profit' not in st.session_state: st.session_state.today_profit = 0.0
 
-st.sidebar.markdown(f"### 💰 आज का प्रॉफिट: `${st.session_state.today_profit}`")
-
-if st.session_state.today_profit >= PROFIT_GOAL:
-    st.success("🎉 $25 का लक्ष्य पूरा! आज की ट्रेडिंग बंद।")
-    auto_mode = False
-else:
-    auto_mode = st.toggle("🚀 50 Coin Auto-Scan चालू करें")
+auto_mode = st.toggle("🚀 50 Coin Auto-Scan चालू करें")
 
 def scan_all_coins():
     for coin in coin_list:
@@ -54,7 +45,6 @@ def scan_all_coins():
             last_price = df['close'].iloc[-1]
             prev_high = df['high'].iloc[-2]
             
-            # SMC Breakout Logic
             if last_price > prev_high:
                 sl = df['low'].rolling(window=5).min().iloc[-1]
                 tp = last_price + (last_price - sl) * 3
@@ -65,31 +55,22 @@ def scan_all_coins():
 if auto_mode:
     status_box = st.empty()
     while auto_mode:
-        # 1. अगर कोई ट्रेड चल रहा है, तो उसका रिजल्ट चेक करें
         if st.session_state.active_trade:
             trade = st.session_state.active_trade
             ticker = exchange.fetch_ticker(trade['symbol'])
             current = ticker['last']
-            status_box.warning(f"⏳ वेटिंग: {trade['symbol']} | Price: {current}\nTarget: {trade['tp']} | SL: {trade['sl']}")
+            status_box.warning(f"⏳ {trade['symbol']} ट्रेड चालू है... Price: {current}")
             
-            if current >= trade['tp']:
-                send_telegram_msg(f"✅ TARGET HIT! 🎯\nCoin: {trade['symbol']}\nProfit: Done")
-                st.session_state.today_profit += 5.0 # प्रॉफिट अपडेट
+            if current >= trade['tp'] or current <= trade['sl']:
+                res = "🎯 TARGET HIT" if current >= trade['tp'] else "❌ SL HIT"
+                send_telegram_msg(f"{res}!\nCoin: {trade['symbol']}")
                 st.session_state.active_trade = None
                 st.rerun()
-            elif current <= trade['sl']:
-                send_telegram_msg(f"❌ STOP LOSS HIT! 📉\nCoin: {trade['symbol']}")
-                st.session_state.active_trade = None
-                st.rerun()
-        
-        # 2. अगर कोई ट्रेड नहीं है, तो पूरी लिस्ट को स्कैन करें
         else:
-            status_box.info("🔍 सभी 50 कॉइन्स में बेस्ट सेटअप ढूंढ रहा हूँ...")
+            status_box.info("🔍 50 कॉइन्स स्कैन हो रहे हैं...")
             signal = scan_all_coins()
             if signal:
                 st.session_state.active_trade = signal
-                msg = f"🚀 NEW SIGNAL FOUND!\nCoin: {signal['symbol']}\nEntry: {signal['entry']}\nSL: {signal['sl']}\nTarget: {signal['tp']}\nLeverage: {leverage}x"
-                send_telegram_msg(msg)
+                send_telegram_msg(f"🚀 NEW SIGNAL!\nCoin: {signal['symbol']}\nEntry: {signal['entry']}\nSL: {signal['sl']}\nTarget: {signal['tp']}")
                 st.rerun()
-        
-        time.sleep(30) # हर 30 सेकंड में रिफ्रेश
+        time.sleep(30)
