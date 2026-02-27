@@ -3,98 +3,90 @@ import ccxt
 import pandas as pd
 import requests
 import time
-from datetime import datetime
 
-# --- 1. आपकी नई Delta और Telegram जानकारी ---
+# --- 1. आपकी Keys और सेटिंग्स ---
 API_KEY = 'Q6TjQC8gjDUf2hSM4HXXmDf26E8G6w'
 SECRET_KEY = 'aZzfh9m1J2Y3n88QZapvhPYwmXNVKUuEgigwmnbmfwlubFlwfw5GgEjs0i67'
 TELEGRAM_TOKEN = '8555372861:AAET5vyB0myBGqJc0P3jvqN0xcDoVTX2cO8'
 CHAT_ID = '7863674359'
 
-# एक्सचेंज सेटअप
 exchange = ccxt.delta({
-    'apiKey': API_KEY, 
-    'secret': SECRET_KEY,
-    'enableRateLimit': True,
-    'options': {'defaultType': 'future'}
+    'apiKey': API_KEY, 'secret': SECRET_KEY,
+    'enableRateLimit': True, 'options': {'defaultType': 'future'}
 })
 
-# टेलीग्राम एंटी-ब्लॉक फंक्शन (Pause between messages)
 def send_telegram_msg(message):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        params = {"chat_id": CHAT_ID, "text": message}
-        requests.get(url, params=params)
-        time.sleep(2) # एंटी-ब्लॉक पॉज़
+        requests.get(url, params={"chat_id": CHAT_ID, "text": message})
     except: pass
 
-st.set_page_config(page_title="Sailani AI Pro Master", layout="wide")
-st.title("🛡️ Sailani AI: Power 15 (Self-Learning Mode)")
+st.set_page_config(page_title="Sailani AI Pro Trader", layout="wide")
+st.title("🛡️ Sailani AI Master: Entry/Exit System")
 
-# --- 2. 15 हाई-वॉल्यूम और हाई-अर्निंग कॉइन्स ---
-power_15 = [
-    "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", 
-    "BNB/USDT", "AVAX/USDT", "MATIC/USDT", "LINK/USDT", "ADA/USDT",
-    "NEAR/USDT", "SUI/USDT", "OP/USDT", "ARB/USDT", "ORDI/USDT"
-]
+# --- 2. ट्रेड ट्रैकिंग सिस्टम (ताकि बार-बार सिग्नल न आए) ---
+if 'active_trades' not in st.session_state:
+    st.session_state.active_trades = {} # यहाँ चल रहे ट्रेड्स जमा होंगे
 
-# --- 3. सेल्फ-लर्निंग और AI फीचर ---
-if 'learning_data' not in st.session_state:
-    st.session_state.learning_data = [] # पिछला डेटा याद रखने के लिए
+power_15 = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", 
+            "BNB/USDT", "AVAX/USDT", "MATIC/USDT", "LINK/USDT", "ADA/USDT",
+            "NEAR/USDT", "SUI/USDT", "OP/USDT", "ARB/USDT", "ORDI/USDT"]
 
-def ai_self_learning(df):
-    # यह फंक्शन पिछले 100 कैंडल्स को देखकर खुद को अपडेट करता है
-    win_rate_logic = df['close'].tail(10).mean()
-    current_trend = "Bullish" if df['close'].iloc[-1] > win_rate_logic else "Bearish"
-    return current_trend
+auto_mode = st.toggle("🚀 लाइव ऑटो-स्कैनिंग और ट्रेडिंग चालू करें")
 
-# --- 4. ऑटो-स्कैनिंग और ट्रेडिंग पैनल ---
-st.sidebar.header("⚙️ Bot Settings")
-auto_trade = st.sidebar.toggle("🚀 Activate Auto-Scan & Trade")
-leverage = st.sidebar.number_input("Leverage", 1, 50, 5)
-amount = st.sidebar.number_input("Amount per trade ($)", 10, 500, 50)
-
-# लाइव बैलेंस डिस्प्ले
-try:
-    balance = exchange.fetch_balance()
-    st.sidebar.metric("Live Balance", f"${balance['total']['USDT']:.2f}")
-except: st.sidebar.error("Delta Connection Error")
-
-if auto_trade:
-    st.info(f"📡 स्कैनिंग शुरू: {len(power_15)} कॉइन्स एक्टिव हैं...")
-    status_area = st.empty()
-    
-    while auto_trade:
-        for coin in power_15:
+if auto_mode:
+    status_box = st.empty()
+    while auto_mode:
+        for symbol in power_15:
             try:
-                # डेटा प्राप्त करना
-                bars = exchange.fetch_ohlcv(coin, timeframe='5m', limit=50)
+                # मार्केट डेटा फेच करना
+                bars = exchange.fetch_ohlcv(symbol, timeframe='5m', limit=50)
                 df = pd.DataFrame(bars, columns=['time', 'open', 'high', 'low', 'close', 'vol'])
-                
-                # AI सेल्फ लर्निंग लॉजिक
-                trend = ai_self_learning(df)
-                last_price = df['close'].iloc[-1]
-                
-                status_area.write(f"🔍 जाँच जारी: **{coin}** | भाव: {last_price} | ट्रेंड: {trend}")
+                current_price = df['close'].iloc[-1]
 
-                # SMC + AI सिग्नल लॉजिक
-                if trend == "Bullish" and last_price > df['high'].iloc[-2]:
-                    target = last_price * 1.02 # 2% टारगेट
-                    stop_loss = last_price * 0.99 # 1% स्टॉपलॉस
+                # अगर इस कॉइन में पहले से ट्रेड चल रहा है, तो उसका रिजल्ट चेक करें
+                if symbol in st.session_state.active_trades:
+                    trade = st.session_state.active_trades[symbol]
                     
-                    msg = f"🔥 AI SIGNAL DETECTED!\nCoin: {coin}\nTrend: {trend}\nPrice: {last_price}\nTarget: {target:.4f}\nStatus: AUTO-TRADE PENDING"
+                    # Target हिट हुआ?
+                    if current_price >= trade['target']:
+                        msg = f"✅ TARGET HIT: {symbol}\nProfit: {trade['target']}\nExit Price: {current_price}"
+                        send_telegram_msg(msg)
+                        del st.session_state.active_trades[symbol] # लिस्ट से हटाएं
                     
-                    st.toast(f"Signal found for {coin}!")
-                    send_telegram_msg(msg)
+                    # Stop Loss हिट हुआ?
+                    elif current_price <= trade['sl']:
+                        msg = f"🚨 STOP LOSS HIT: {symbol}\nLoss at: {trade['sl']}\nExit Price: {current_price}"
+                        send_telegram_msg(msg)
+                        del st.session_state.active_trades[symbol] # लिस्ट से हटाएं
                     
-                    # ऑटो-ट्रेडिंग एग्जीक्यूशन
-                    # exchange.create_market_buy_order(coin, amount) 
-                    
-                time.sleep(1) # सर्वर लोड कम करने के लिए
-            except Exception as e:
-                continue
+                    continue # जब तक फैसला न हो, नया सिग्नल नहीं ढूंढना
+
+                # --- 3. नया सिग्नल ढूंढने का लॉजिक (Entry/SL/TP) ---
+                ema_20 = df['close'].ewm(span=20).mean().iloc[-1]
+                
+                if current_price > ema_20 and current_price > df['high'].iloc[-2]:
+                    # एंट्री, एसएल और टारगेट कैलकुलेशन
+                    entry_price = current_price
+                    stop_loss = df['low'].iloc[-3] # पिछली 3 कैंडल का लो
+                    target_price = entry_price + (entry_price - stop_loss) * 2 # 1:2 रिस्क रिवॉर्ड
+
+                    # ट्रेड को रजिस्टर करें
+                    st.session_state.active_trades[symbol] = {
+                        'entry': entry_price, 'sl': stop_loss, 'target': target_price
+                    }
+
+                    # टेलीग्राम मैसेज
+                    signal_msg = (f"🔥 NEW SIGNAL: {symbol}\n\n"
+                                  f"➡️ Entry: {entry_price}\n"
+                                  f"🛑 Stop Loss: {stop_loss}\n"
+                                  f"🎯 Target: {target_price}")
+                    send_telegram_msg(signal_msg)
+                    st.success(f"Signal sent for {symbol}")
+
+                status_box.info(f"📡 स्कैनिंग: {symbol} | भाव: {current_price} | एक्टिव ट्रेड्स: {len(st.session_state.active_trades)}")
+                time.sleep(1)
+
+            except: continue
         
-        time.sleep(30) # हर 30 सेकंड में पूरी लिस्ट दोबारा स्कैन
-
-else:
-    st.warning("बॉट अभी 'OFF' है। साइडबार से चालू करें।")
+        time.sleep(10) # पूरी लिस्ट स्कैन करने के बाद ब्रेक
